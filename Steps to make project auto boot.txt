@@ -1,0 +1,28 @@
+Steps:
+Create the start-nextjs.bat file:
+
+Open Notepad.
+Write your batch script, for example:
+batch
+
+Copy code
+
+@echo off
+cd "C:\path\to\your\nextjs\project"
+npm run dev
+pause
+
+
+
+Replace "C:\path\to\your\nextjs\project" with the actual path to your Next.js project directory.
+Save the file as start-nextjs.bat. Make sure to select All Files in the "Save as type" dropdown in Notepad, and give it the .bat extension.
+Move the Batch File to the Startup Folder:
+
+Press Win + R to open the Run dialog.
+Type shell:startup and press Enter. This will open the Startup folder.
+Copy the start-nextjs.bat file you created, then paste it into the Startup folder.
+Once the .bat file is in the Startup folder, it will run automatically every time you log into Windows.
+
+You can test it by restarting your computer to see if the Next.js app starts on its own.
+
+Let me know if you need any further assistance!
