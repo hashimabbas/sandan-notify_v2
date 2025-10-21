@@ -42,7 +42,7 @@ export async function POST(req) {
                 month: "short",
               });
               const year = jsDate.getFullYear().toString().slice(-2); // Get last two digits of year
-              const formattedDate = ` ${month}-${year}`;
+              const formattedDate = `${month}-${year}`;
               return [key, formattedDate];
             }
           }
@@ -51,9 +51,8 @@ export async function POST(req) {
             typeof value === "number" &&
             key !== "Contact" &&
             key !== "Unit" &&
-            key !== "Owner_ID_No"&&
+            key !== "Owner_ID_No" &&
             key != "VAT_on_Management_Fee_and_Commission"
-
           ) {
             return [key, Number(value).toFixed(3)]; // Format to 3 decimal places
           }

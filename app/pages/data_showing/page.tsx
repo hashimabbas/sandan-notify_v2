@@ -20,6 +20,7 @@ import { useRouter } from "next/router";
 import { Toaster } from "@/components/ui/toaster";
 
 type SheetData = {
+  CR_Note: string;
   Unit: string;
   Name_of_Owner: string;
   Owner_ID_No: string;
@@ -345,6 +346,7 @@ export default function Home() {
                       onChange={handleSelectAllRows}
                     />
                   </TableHead>
+                  <TableHead>CR Note</TableHead>
                   <TableHead className="w-[100px]">Unit</TableHead>
                   <TableHead>Name Of Owner</TableHead>
                   <TableHead>Owner ID No</TableHead>
@@ -373,6 +375,7 @@ export default function Home() {
                         onChange={() => handleSelectRow(result.Contact)}
                       />
                     </TableCell>
+                    <TableCell>{result.CR_Note}</TableCell>
                     <TableCell>{result.Unit}</TableCell>
                     <TableCell>{result.Name_of_Owner}</TableCell>
                     <TableCell>{result.Owner_ID_No}</TableCell>
