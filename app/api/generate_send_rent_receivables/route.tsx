@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import React from "react";
-// Import the new Rent Invoice component
-import { PDFDocumentComponent } from "./pdfDocument";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { PDFDocumentComponent } from "./pdfDocument";
 import clientPromise from "../../lib/mongodb";
 import { ObjectId } from "mongodb";
+import { put } from "@vercel/blob";
+
+const CHATBERRY_TOKEN = process.env.CHATBERRY_TOKEN!;
+const CHATBERRY_TEMPLATE_ENDPOINT =
+  "https://dashboard.chatberry.net/api/send/template";
 
 export async function POST(req: NextRequest) {
   const client = await clientPromise;
@@ -12,7 +15,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const { selectedRows } = await req.json();
-    if (!selectedRows || selectedRows.length === 0) {
+
+    if (!selectedRows?.length) {
       return NextResponse.json({ message: "No rows selected" }, { status: 400 });
     }
 
@@ -20,45 +24,120 @@ export async function POST(req: NextRequest) {
 
     for (const row of selectedRows) {
       try {
+        // ----------------------------
+        // 1️⃣ Generate PDF for WhatsApp DOCUMENT header
+        // ----------------------------
         const pdfBuffer = await renderToBuffer(
           <PDFDocumentComponent selectedRows={[row]} />
         );
-        const base64Pdf = pdfBuffer.toString("base64");
 
-        const myHeaders = new Headers();
-        myHeaders.append("Content-Type", "application/x-www-form-urlencoded");
+        // ----------------------------
+        // 2️⃣ Upload PDF to Vercel Blob
+        // ----------------------------
+        const blob = await put(
+          `rent-invoices/invoice_${row._id}.pdf`,
+          pdfBuffer,
+          {
+            access: "public",
+            contentType: "application/pdf",
+            allowOverwrite: true,
+          }
+        );
 
-        const urlencoded = new URLSearchParams();
-        urlencoded.append("token", "ye55z7mgbjpfe3gw");
-        urlencoded.append("to", "968" + row.Contact);
-        urlencoded.append("body", "Intaj Notify App");
-        // Use a more descriptive filename for the Rent Invoice
-        urlencoded.append("filename", `RentInvoice-${row.Tenant_Name}.pdf`);
-        urlencoded.append("document", base64Pdf);
+        // ----------------------------
+        // 3️⃣ Prepare payload for ChatBerry
+        // ----------------------------
+        // ----------------------------
+        // 3️⃣ Prepare payload for ChatBerry
+        // ----------------------------
 
-        const response = await fetch("https://api.ultramsg.com/instance97367/messages/document", { method: "POST", headers: myHeaders, body: urlencoded });
+        let phoneStr = String(row.Contact || "").trim();
+        if (!phoneStr.startsWith("+")) {
+          phoneStr = "+968" + phoneStr;
+        }
+
+        const payload = {
+          phone: phoneStr,
+          template: {
+            name: "tenant_rent_invoice",
+            language: { code: "en" },
+            components: [
+              {
+                type: "header",
+                parameters: [
+                  {
+                    type: "document",
+                    document: {
+                      link: blob.url,
+                      filename: `rent_invoice_${row.BUT_ID || "unit"}.pdf`,
+                    },
+                  },
+                ],
+              },
+              {
+                type: "body",
+                parameters: [
+                  { type: "text", text: String(row.Tenant_Name || "Customer") },
+                  { type: "text", text: String(row.BUT_ID || "N/A") },
+                  { type: "text", text: String(row.Against_month_of || "Period") },
+                ],
+              },
+            ],
+          },
+        };
+
+
+        // ----------------------------
+        // 4️⃣ Send PDF template
+        // ----------------------------
+        const response = await fetch(CHATBERRY_TEMPLATE_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${CHATBERRY_TOKEN}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
         const result = await response.json();
 
-        if (result.sent === "true") {
-          // IMPORTANT: Make sure this is the correct collection name for rent receivables
-          await db.collection("sheet_details_rent_receivables").deleteOne({ _id: new ObjectId(String(row._id)) });
-          log.push({ contact: row.Contact, status: "Sent" });
+        // Inspect the response structure. Based on logs, it is nested: { statusCode: 200, data: { success: true, ... } }
+        const isSuccess = result.success === true || (result.data && result.data.success === true);
+
+        if (isSuccess) {
+          // Delete row from DB after successful send
+          await db
+            .collection("sheet_details_rent_receivables")
+            .deleteOne({ _id: new ObjectId(String(row._id)) });
+
+          log.push({
+            contact: row.Contact,
+            status: "PDF-Success",
+            messageId: result?.data?.data?.messages?.[0]?.id || "sent",
+            pdf: blob.url,
+          });
         } else {
-          log.push({ contact: row.Contact, status: "Failed", error: result.error || "Unknown error" });
+          console.error("Chatberry API Error Response:", JSON.stringify(result, null, 2));
+          log.push({
+            contact: row.Contact,
+            status: "PDF-Failed",
+            error: result.error || result.message || JSON.stringify(result),
+          });
         }
-      } catch (innerError: any) {
-        console.error("Error processing row for:", row.Contact, innerError);
-        log.push({ contact: row.Contact, status: "Failed", error: innerError.message });
+      } catch (err: any) {
+        log.push({
+          contact: row.Contact,
+          status: "Error",
+          error: err.message,
+        });
       }
     }
 
-    return NextResponse.json({ message: "Messages processed", log });
-
-  } catch (error) {
-    console.error("Failed to process request:", error);
-    return NextResponse.json(
-      { message: "Failed to process request", error: (error as Error).message },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      message: "Process completed",
+      log,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ message: "Fatal error", error: e.message }, { status: 500 });
   }
 }

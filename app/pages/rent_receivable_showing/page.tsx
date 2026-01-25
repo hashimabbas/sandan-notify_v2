@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -10,13 +10,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast"; // Adjust import path if needed
-import { Toast } from "@/components/ui/toast"; // Adjust import path if needed
+import { useToast } from "@/hooks/use-toast";
 import Header from "../components/header";
 import HeroSection from "../components/hero";
 import ConfirmationDialog from "@/app/pages/components/ConfirmationDialog";
 import NextNProgress from "nextjs-progressbar";
 import { Toaster } from "@/components/ui/toaster";
+import { Loader2 } from "lucide-react";
 
 type SheetData = {
   BUT_ID: string;
@@ -38,6 +38,7 @@ export default function Home() {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
@@ -49,6 +50,7 @@ export default function Home() {
   // Fetch data from API on component mount
   useEffect(() => {
     async function fetchData() {
+      setIsLoading(true);
       try {
         const res = await fetch("/api/get_sheet_rent_receivables");
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -57,19 +59,29 @@ export default function Home() {
       } catch (error: any) {
         console.error("Error fetching data:", error);
         setError(error.message);
+        toast({
+          variant: "destructive",
+          title: "Error fetching data",
+          description: error.message,
+        });
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchData();
-  }, []);
+  }, [toast]);
 
-  // Automatically send messages in intervals if queue has items and not currently sending
+  // Process queue automatically only when items are added to it via button
   useEffect(() => {
-    if (queue.length === 0 || isSending) return;
-    const intervalId = setInterval(() => {
-      sendBatch();
-    }, 10000);
-
-    return () => clearInterval(intervalId);
+    let intervalId: NodeJS.Timeout;
+    if (queue.length > 0 && !isSending) {
+      intervalId = setInterval(() => {
+        sendBatch();
+      }, 2000); // Process batch every 2 seconds
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    }
   }, [queue, isSending]);
 
   // Select/Deselect a row
@@ -124,7 +136,7 @@ export default function Home() {
 
       toast({
         description: `${rowsToDelete.length} item(s) deleted successfully.`,
-        duration: 5000,
+        duration: 3000,
         style: {
           background: "#27ae60",
           color: "#FFFFFF",
@@ -135,11 +147,7 @@ export default function Home() {
       console.error("Error deleting records:", error);
       toast({
         description: "Error deleting records. Please try again.",
-        duration: 5000,
-        style: {
-          background: "#c0392b",
-          color: "#FFFFFF",
-        },
+        variant: "destructive",
       });
     } finally {
       setRowsToDelete([]); // Reset rowsToDelete to clear the selection
@@ -162,11 +170,11 @@ export default function Home() {
       toast({ description: "No rows selected." });
       return;
     }
-    setQueue([...queue, ...selectedData.map((item) => item.Contact)]);
+    setQueue((prev) => [...prev, ...selectedData.map((item) => item.Contact)]);
     setSelectedRows([]);
     toast({
       description: "Messages added to the queue for sending.",
-      duration: 5000,
+      duration: 3000,
       style: {
         background: "#27ae60",
         color: "#FFFFFF",
@@ -179,6 +187,13 @@ export default function Home() {
     try {
       const batch = queue.slice(0, batchSize);
       const batchData = data.filter((item) => batch.includes(item.Contact));
+
+      // If no matching data found for queue items (rare edge case), just slice queue
+      if (batchData.length === 0 && batch.length > 0) {
+        setQueue((prev) => prev.slice(batchSize));
+        return;
+      }
+
       if (batchData.length === 0) return;
 
       setIsSending(true);
@@ -189,11 +204,14 @@ export default function Home() {
         body: JSON.stringify({ selectedRows: batchData }),
       });
 
-      if (!res.ok) throw new Error(`Failed to send messages: ${res.status}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || `Failed to send messages: ${res.status}`);
+      }
 
       toast({
         description: `${batchData.length} messages sent successfully.`,
-        duration: 5000,
+        duration: 3000,
         style: {
           background: "#27ae60",
           color: "#FFFFFF",
@@ -205,9 +223,8 @@ export default function Home() {
         prevData.filter((item) => !batch.includes(item.Contact))
       );
 
-      setProgress(
-        (prevProgress) => prevProgress + (batchData.length / data.length) * 100
-      );
+      // Simple progress tracking
+      setProgress(100);
 
       if (queue.length <= batchSize) {
         setProgress(100);
@@ -221,17 +238,25 @@ export default function Home() {
         });
         setTimeout(() => setProgress(0), 2000);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending messages:", error);
       toast({
-        description: "Error sending messages.",
-        duration: 5000,
-        style: { background: "#c0392b", color: "#FFFFFF" },
+        title: "Error sending messages",
+        description: error.message,
+        variant: "destructive",
       });
+      // Safety: clear queue on error to prevent infinite loops
+      setQueue([]);
     } finally {
       setIsSending(false);
     }
   };
+
+  const formatCurrency = (val: string | number) => {
+    const num = Number(val);
+    if (isNaN(num)) return val;
+    return new Intl.NumberFormat('en-AE', { style: 'decimal', minimumFractionDigits: 2 }).format(num);
+  }
 
   return (
     <>
@@ -246,87 +271,132 @@ export default function Home() {
       />
       <div className="container mx-auto p-4">
         <main>
-          {error && <div className="text-red-500">Error: {error}</div>}
-          {isSending && (
-            <div className="my-4">
-              <div className="h-4 w-full bg-gray-200 rounded">
-                <div
-                  className="h-4 bg-blue-600 rounded"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <p>{progress.toFixed()}% complete</p>
+          {error && (
+            <div className="p-4 mb-4 text-red-700 bg-red-100 rounded-lg">
+              Error: {error}
             </div>
           )}
-          <div className="mb-4 flex flex-wrap justify-between">
-            <Button
-              variant="destructive"
-              onClick={handleDeleteSelected}
-              disabled={selectedRows.length === 0}
-            >
-              Delete Selected
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSendMessageSelected}
-              disabled={selectedRows.length === 0 || isSending}
-            >
-              {isSending ? "Sending..." : "Send Message to Selected"}
-            </Button>
-          </div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-full table-auto">
-              <TableCaption>A list of your recent invoices.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
-                    <input
-                      type="checkbox"
-                      checked={selectAll}
-                      onChange={handleSelectAllRows}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[100px]">BUT ID</TableHead>
-                  <TableHead>Tenant Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Lease Start Date</TableHead>
-                  <TableHead>Lease End Date</TableHead>
-                  <TableHead>Rent Start Month</TableHead>
-                  <TableHead>Remarks</TableHead>
-                  <TableHead>Against Month Of</TableHead>
-                  <TableHead>Rent Amount</TableHead>
-                  <TableHead>Number of Months</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Total Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((item) => (
-                  <TableRow key={item.BUT_ID}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.includes(item.Contact)}
-                        onChange={() => handleSelectRow(item.Contact)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{item.BUT_ID}</TableCell>
-                    <TableCell>{item.Tenant_Name}</TableCell>
-                    <TableCell>{item.Contact}</TableCell>
-                    <TableCell>{item.Lease_Start_Date}</TableCell>
-                    <TableCell>{item.Lease_End_Date}</TableCell>
-                    <TableCell>{item.Rent_start_month}</TableCell>
-                    <TableCell>{item.Remarks}</TableCell>
-                    <TableCell>{item.Against_month_of}</TableCell>
-                    <TableCell>{item.Rent_Amount}</TableCell>
-                    <TableCell>{item.Number_of_Months}</TableCell>
-                    <TableCell>{item.Amount}</TableCell>
-                    <TableCell>{item.Total_Amount}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading data...</p>
+            </div>
+          )}
+
+          {!isLoading && !error && (
+            <>
+              {/* Sending Progress */}
+              {isSending && (
+                <div className="my-6 space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Sending messages...</span>
+                    <span>{progress.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedRows.length === 0}
+                >
+                  Delete Selected ({selectedRows.length})
+                </Button>
+                <Button
+                  variant={isSending ? "secondary" : "default"}
+                  onClick={handleSendMessageSelected}
+                  disabled={selectedRows.length === 0 || isSending}
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    "Send Message to Selected"
+                  )}
+                </Button>
+              </div>
+
+              {/* Table */}
+              <div className="rounded-md border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-full table-auto">
+                    <TableCaption>A list of your recent invoices.</TableCaption>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[50px]">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                            checked={selectAll}
+                            onChange={handleSelectAllRows}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[100px]">BUT ID</TableHead>
+                        <TableHead>Tenant Name</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Lease Start</TableHead>
+                        <TableHead>Lease End</TableHead>
+                        <TableHead>Rent Start</TableHead>
+                        <TableHead>Remarks</TableHead>
+                        <TableHead>Against Month</TableHead>
+                        <TableHead>Rent Amount</TableHead>
+                        <TableHead>Months</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Total Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
+                            No records found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        data.map((item) => (
+                          <TableRow key={item.BUT_ID} className="hover:bg-gray-50">
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                                checked={selectedRows.includes(item.Contact)}
+                                onChange={() => handleSelectRow(item.Contact)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{item.BUT_ID}</TableCell>
+                            <TableCell>{item.Tenant_Name}</TableCell>
+                            <TableCell>{item.Contact}</TableCell>
+                            <TableCell>{item.Lease_Start_Date}</TableCell>
+                            <TableCell>{item.Lease_End_Date}</TableCell>
+                            <TableCell>{item.Rent_start_month}</TableCell>
+                            <TableCell>{item.Remarks}</TableCell>
+                            <TableCell>{item.Against_month_of}</TableCell>
+                            <TableCell>{formatCurrency(item.Rent_Amount)}</TableCell>
+                            <TableCell>{item.Number_of_Months}</TableCell>
+                            <TableCell>{formatCurrency(item.Amount)}</TableCell>
+                            <TableCell className="font-bold text-green-600">{formatCurrency(item.Total_Amount)}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Confirmation Dialog */}
           {showDialog && (
             <ConfirmationDialog

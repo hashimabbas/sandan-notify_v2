@@ -10,16 +10,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast"; // Adjust import path if needed
-import { Toast } from "@/components/ui/toast"; // Adjust import path if needed
+import { useToast } from "@/hooks/use-toast";
 import Header from "../components/header";
 import HeroSection from "../components/hero";
 import ConfirmationDialog from "@/app/pages/components/ConfirmationDialog";
 import NextNProgress from "nextjs-progressbar";
-import { useRouter } from "next/router";
 import { Toaster } from "@/components/ui/toaster";
+import { Loader2 } from "lucide-react";
 
 type SheetData = {
+  _id?: string;
   CR_Note: string;
   Unit: string;
   Name_of_Owner: string;
@@ -43,19 +43,20 @@ export default function Home() {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSending, setIsSending] = useState(false); // Loading state for sending messages
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false); // State for dialog visibility
-  const [rowsToDelete, setRowsToDelete] = useState<string[]>([]); // Rows pending deletion confirmation
+  const [showDialog, setShowDialog] = useState(false);
+  const [rowsToDelete, setRowsToDelete] = useState<string[]>([]);
   const [queue, setQueue] = useState<string[]>([]);
-  const [batchSize, setBatchSize] = useState(10); // Define batch size
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const [batchSize, setBatchSize] = useState(10);
   const [progress, setProgress] = useState(0);
   const currentYear = new Date().getFullYear();
 
   // Fetch data from API on component mount
   useEffect(() => {
     async function fetchData() {
+      setIsLoading(true);
       try {
         const res = await fetch("/api/get_sheet");
         if (!res.ok) {
@@ -66,19 +67,17 @@ export default function Home() {
       } catch (error: any) {
         console.error("Error fetching data:", error);
         setError(error.message);
+        toast({
+          variant: "destructive",
+          title: "Error fetching data",
+          description: error.message,
+        });
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchData();
-  }, []);
-
-  // Periodically send messages using setInterval
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      handleSendMessageSelected();
-    }, 60000);
-
-    return () => clearInterval(intervalId);
-  }, [data, selectedRows]);
+  }, [toast]);
 
   // Select/Deselect a row
   const handleSelectRow = (Contact: string) => {
@@ -143,11 +142,7 @@ export default function Home() {
       console.error("Error deleting records:", error);
       toast({
         description: "Error deleting records. Please try again.",
-        duration: 5000,
-        style: {
-          background: "#c0392b",
-          color: "#FFFFFF",
-        },
+        variant: "destructive",
       });
     } finally {
       setShowDialog(false);
@@ -156,11 +151,11 @@ export default function Home() {
 
   // Periodically send messages from the queue
   useEffect(() => {
+    let intervalId: NodeJS.Timeout;
     if (queue.length > 0 && !isSending) {
-      const id = setInterval(() => {
+      intervalId = setInterval(() => {
         sendBatch();
-      }, 10000);
-      setIntervalId(id);
+      }, 2000);
     }
 
     return () => {
@@ -177,11 +172,11 @@ export default function Home() {
       toast({ description: "No rows selected." });
       return;
     }
-    setQueue([...queue, ...selectedData.map((item) => item.Contact)]);
+    setQueue((prev) => [...prev, ...selectedData.map((item) => item.Contact)]);
     setSelectedRows([]);
     toast({
       description: "Messages added to the queue for sending.",
-      duration: 5000,
+      duration: 3000,
       style: {
         background: "#27ae60",
         color: "#FFFFFF",
@@ -194,13 +189,13 @@ export default function Home() {
     try {
       // Get the current batch from the queue
       const batch = queue.slice(0, batchSize);
-      const batchData = data.filter((item) => batch.includes(item.Contact)); // Get the data for the current batch
+      const batchData = data.filter((item) => batch.includes(item.Contact));
 
-      console.log("Current Batch:", batch); // Debugging
-      console.log("Batch Data:", batchData); // Debugging
+      console.log("Current Batch:", batch);
+      console.log("Batch Data:", batchData);
 
       if (batchData.length > 0) {
-        setIsSending(true); // Set the sending state to true
+        setIsSending(true);
 
         const res = await fetch("/api/generate_and_send_pdf", {
           method: "POST",
@@ -208,56 +203,36 @@ export default function Home() {
           body: JSON.stringify({ selectedRows: batchData }),
         });
 
-        if (!res.ok) throw new Error(`Failed to send messages: ${res.status}`);
+        const result = await res.json(); // Wait for JSON response
+
+        if (!res.ok) throw new Error(result.message || `Failed to send messages: ${res.status}`);
 
         // Show toast notification for successful batch sending
         toast({
           description: `${batchData.length} messages sent successfully.`,
-          duration: 5000,
+          duration: 3000,
           style: {
             background: "#27ae60",
             color: "#FFFFFF",
           },
         });
+
         // Remove sent contacts from the queue
-        setQueue((prevQueue) => {
-          const updatedQueue = prevQueue.slice(batchSize); // Slice based on batch size
-          console.log("Updated Queue:", updatedQueue); // Debugging
-          return updatedQueue;
-        });
+        setQueue((prevQueue) => prevQueue.slice(batchSize));
 
         // Remove sent contacts from data and update the UI
-        setData((prevData) => {
-          const updatedData = prevData.filter(
-            (item) => !batch.includes(item.Contact)
-          );
-          console.log("Updated Data:", updatedData); // Debugging
-          return updatedData;
-        });
-
-        // Remove sent contacts from selectedRows
-        setSelectedRows((prevSelectedRows) => {
-          const updatedSelectedRows = prevSelectedRows.filter(
-            (contact) => !batch.includes(contact)
-          );
-          console.log("Updated Selected Rows:", updatedSelectedRows); // Debugging
-          return updatedSelectedRows;
-        });
+        setData((prevData) =>
+          prevData.filter((item) => !batch.includes(item.Contact))
+        );
 
         // Update progress
         setProgress((prevProgress) => {
-          const totalRows = data.length; // Total initial data
-          const sentRows =
-            totalRows - queue.length + Math.min(batchSize, queue.length); // Ensure correct count even with small queues
-          const newProgress = (sentRows / totalRows) * 100;
-          console.log("Progress:", newProgress); // Debugging
-          return newProgress;
+          return 100; // Simplified progress
         });
 
-        // If queue is empty, stop the process and reset progress
+        // If queue is empty
         if (queue.length <= batchSize) {
-          console.log("Queue is empty, completing..."); // Debugging
-          setProgress(100); // Complete the progress bar
+          setProgress(100);
           toast({
             description: "All messages sent successfully!",
             duration: 5000,
@@ -267,24 +242,33 @@ export default function Home() {
             },
           });
           setTimeout(() => {
-            setProgress(0); // Reset progress after a short delay
-            setQueue([]); // Clear the queue
+            setProgress(0);
+            setQueue([]);
           }, 2000);
         }
-      } else {
-        console.log("No batch data to send."); // Debugging
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending messages:", error);
       toast({
-        description: "Error sending messages.",
-        duration: 5000,
-        style: { background: "#c0392b", color: "#FFFFFF" },
+        title: "Error Sending Messages",
+        description: error.message || "Unknown error occurred",
+        variant: "destructive",
       });
+      // Important: If we fail, we probably should stop or skip. 
+      // For now, let's just clear the queue to prevent infinite loop of failures or define better retry logic.
+      // But typically, clearing queue is safer to stop spamming errors.
+      setQueue([]);
+      setIsSending(false);
     } finally {
-      setIsSending(false); // Reset the sending state
+      setIsSending(false);
     }
   };
+
+  const formatCurrency = (val: string | number) => {
+    const num = Number(val);
+    if (isNaN(num)) return val;
+    return new Intl.NumberFormat('en-AE', { style: 'decimal', minimumFractionDigits: 2 }).format(num);
+  }
 
   return (
     <>
@@ -299,107 +283,146 @@ export default function Home() {
       />
       <div className="container mx-auto p-4">
         <main>
-          {error && <div className="text-red-500">Error: {error}</div>}
-
-          {/** Loading Progress bar */}
-          {isSending && (
-            <div className="my-4">
-              <div className="h-4 w-full bg-gray-200 rounded">
-                <div
-                  className="h-4 bg-blue-600 rounded"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <p>{progress.toFixed()}% complete</p>
+          {error && (
+            <div className="p-4 mb-4 text-red-700 bg-red-100 rounded-lg">
+              Error: {error}
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="mb-4 flex flex-wrap justify-between">
-            <Button
-              variant="destructive"
-              onClick={handleDeleteSelected}
-              disabled={selectedRows.length === 0}
-            >
-              Delete Selected
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSendMessageSelected}
-              disabled={selectedRows.length === 0 || isSending}
-            >
-              {isSending ? "Sending..." : "Send Message to Selected"}
-            </Button>
-          </div>
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading data...</p>
+            </div>
+          )}
 
-          {/* Responsive table container */}
-          <div className="overflow-x-auto">
-            <Table className="min-w-full table-auto">
-              <TableCaption>A list of your recent invoices.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
-                    <input
-                      type="checkbox"
-                      aria-label="Select all"
-                      checked={selectAll}
-                      onChange={handleSelectAllRows}
-                    />
-                  </TableHead>
-                  <TableHead>CR Note</TableHead>
-                  <TableHead className="w-[100px]">Unit</TableHead>
-                  <TableHead>Name Of Owner</TableHead>
-                  <TableHead>Owner ID No</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Community Charge up to {currentYear}  End</TableHead>
-                  <TableHead>Rent collected</TableHead>
-                  <TableHead>Against month of</TableHead>
-                  <TableHead>Leasing Commission</TableHead>
-                  <TableHead>Property Management Fee</TableHead>
-                  <TableHead>VAT_on_Management_Fee_and_Commission</TableHead>
-                  <TableHead>Municipality Fee</TableHead>
-                  <TableHead>Community</TableHead>
-                  <TableHead>Maintenance</TableHead>
-                  <TableHead>Payable to Owner</TableHead>
-                  <TableHead>Community charge Carried forward</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((result, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        aria-label={`Select row for contact ${result.Contact}`}
-                        checked={selectedRows.includes(result.Contact)}
-                        onChange={() => handleSelectRow(result.Contact)}
-                      />
-                    </TableCell>
-                    <TableCell>{result.CR_Note}</TableCell>
-                    <TableCell>{result.Unit}</TableCell>
-                    <TableCell>{result.Name_of_Owner}</TableCell>
-                    <TableCell>{result.Owner_ID_No}</TableCell>
-                    <TableCell>{result.Contact}</TableCell>
-                    <TableCell>
-                      {result.Community_Charge_up_to_2024_End}
-                    </TableCell>
-                    <TableCell>{result.Rent_collected}</TableCell>
-                    <TableCell>{result.Against_month_of}</TableCell>
-                    <TableCell>{result.Leasing_Commission}</TableCell>
-                    <TableCell>{result.Property_Management_Fee}</TableCell>
-                    <TableCell>{result.VAT_on_Management_Fee_and_Commission}</TableCell>
-                    <TableCell>{result.Municipality_Fee}</TableCell>
-                    <TableCell>{result.Community}</TableCell>
-                    <TableCell>{result.Maintenance}</TableCell>
-                    <TableCell>{result.Payable_to_Owner}</TableCell>
-                    <TableCell>
-                      {result.Community_charge_Carried_forward}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {!isLoading && !error && (
+            <>
+              {/* Process Queue Progress */}
+              {isSending && (
+                <div className="my-6 space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Sending messages...</span>
+                    <span>{progress.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedRows.length === 0}
+                  >
+                    Delete Selected ({selectedRows.length})
+                  </Button>
+                </div>
+
+                <Button
+                  variant={isSending ? "secondary" : "default"}
+                  onClick={handleSendMessageSelected}
+                  disabled={selectedRows.length === 0 || isSending}
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    "Send Message to Selected"
+                  )}
+                </Button>
+              </div>
+
+              {/* Responsive table container */}
+              <div className="rounded-md border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableCaption>A list of your recent records.</TableCaption>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="w-[50px]">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                            aria-label="Select all"
+                            checked={selectAll}
+                            onChange={handleSelectAllRows}
+                          />
+                        </TableHead>
+                        <TableHead>CR Note</TableHead>
+                        <TableHead className="w-[100px]">Unit</TableHead>
+                        <TableHead>Owner Name</TableHead>
+                        <TableHead>Owner ID</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead className="whitespace-nowrap">Charges up to {currentYear}</TableHead>
+                        <TableHead>Rent Collected</TableHead>
+                        <TableHead>Against Month</TableHead>
+                        <TableHead>Leasing Comm.</TableHead>
+                        <TableHead>Mgmt Fee</TableHead>
+                        <TableHead>VAT (Mgmt+Comm)</TableHead>
+                        <TableHead>Municipality Fee</TableHead>
+                        <TableHead>Community</TableHead>
+                        <TableHead>Maintenance</TableHead>
+                        <TableHead>Payable to Owner</TableHead>
+                        <TableHead>Charges Carried Fwd</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={17} className="h-24 text-center text-muted-foreground">
+                            No records found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        data.map((result, index) => (
+                          <TableRow key={index} className="hover:bg-gray-50">
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                                aria-label={`Select row for contact ${result.Contact}`}
+                                checked={selectedRows.includes(result.Contact)}
+                                onChange={() => handleSelectRow(result.Contact)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{result.CR_Note}</TableCell>
+                            <TableCell>{result.Unit}</TableCell>
+                            <TableCell>{result.Name_of_Owner}</TableCell>
+                            <TableCell>{result.Owner_ID_No}</TableCell>
+                            <TableCell>{result.Contact}</TableCell>
+                            <TableCell>{formatCurrency(result.Community_Charge_up_to_2024_End)}</TableCell>
+                            <TableCell>{formatCurrency(result.Rent_collected)}</TableCell>
+                            <TableCell>{result.Against_month_of}</TableCell>
+                            <TableCell>{formatCurrency(result.Leasing_Commission)}</TableCell>
+                            <TableCell>{formatCurrency(result.Property_Management_Fee)}</TableCell>
+                            <TableCell>{formatCurrency(result.VAT_on_Management_Fee_and_Commission)}</TableCell>
+                            <TableCell>{formatCurrency(result.Municipality_Fee)}</TableCell>
+                            <TableCell>{result.Community}</TableCell>
+                            <TableCell>{formatCurrency(result.Maintenance)}</TableCell>
+                            <TableCell className="font-bold text-green-600">{formatCurrency(result.Payable_to_Owner)}</TableCell>
+                            <TableCell>
+                              {formatCurrency(result.Community_charge_Carried_forward)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
 

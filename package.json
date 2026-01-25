@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 8000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -16,6 +16,7 @@
     "@radix-ui/react-toast": "^1.2.1",
     "@react-pdf/renderer": "^4.3.0",
     "@types/multer": "^1.4.12",
+    "@vercel/blob": "^2.0.0",
     "arabic-persian-reshaper": "^1.0.1",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
