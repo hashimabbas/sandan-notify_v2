@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     const log: any[] = [];
+    let messageCount = 0;
 
     for (const row of selectedRows) {
       try {
@@ -134,9 +135,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Add a random delay between 2 to 5 seconds to mimic human behavior
-      const jitter = Math.floor(Math.random() * 3000) + 2000;
-      await delay(jitter);
+      messageCount++;
+
+      // ----------------------------
+      // 5️⃣ Randomized Throttling
+      // ----------------------------
+      // Normal delay between messages: 5 to 15 seconds
+      let delayTime = Math.floor(Math.random() * 10000) + 5000;
+
+      // Long break every 15 messages: 60 to 120 seconds
+      if (messageCount % 15 === 0 && messageCount < selectedRows.length) {
+        const longBreak = Math.floor(Math.random() * 60000) + 60000;
+        console.log(`Sent 15 messages. Taking a strategic break for ${longBreak / 1000} seconds...`);
+        delayTime += longBreak;
+      }
+
+      await delay(delayTime);
     }
 
     return NextResponse.json({
