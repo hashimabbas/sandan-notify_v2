@@ -44,7 +44,7 @@ export default function Home() {
   const [showDialog, setShowDialog] = useState(false);
   const [rowsToDelete, setRowsToDelete] = useState<string[]>([]);
   const [queue, setQueue] = useState<string[]>([]);
-  const batchSize = 10;
+  const batchSize = 4;
   const [progress, setProgress] = useState(0);
 
   // Fetch data from API on component mount

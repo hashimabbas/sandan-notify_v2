@@ -5,7 +5,6 @@ const ConfirmationDialog = ({
   message,
   onClose,
   onConfirm,
-  onCancel,
 }) => {
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-gray-500 bg-opacity-50">

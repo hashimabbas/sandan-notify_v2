@@ -49,7 +49,7 @@ export default function Home() {
   const [showDialog, setShowDialog] = useState(false);
   const [rowsToDelete, setRowsToDelete] = useState<string[]>([]);
   const [queue, setQueue] = useState<string[]>([]);
-  const [batchSize, setBatchSize] = useState(10);
+  const [batchSize, setBatchSize] = useState(4);
   const [progress, setProgress] = useState(0);
   const currentYear = new Date().getFullYear();
 
