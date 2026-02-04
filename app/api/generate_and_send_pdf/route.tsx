@@ -16,6 +16,8 @@ const CHATBERRY_TOKEN = process.env.CHATBERRY_TOKEN || "2CI4SBwLm6XfkbxgIHj0AFPv
 const CHATBERRY_BASE_URL = "https://dashboard.chatberry.net";
 const CHATBERRY_TEMPLATE_ENDPOINT = CHATBERRY_BASE_URL + "/api/send/template";
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Template Config
 const TEMPLATE_NAME = "owner_credit_note";
 const TEMPLATE_LANGUAGE_CODE = "en";
@@ -143,6 +145,10 @@ export async function POST(req: NextRequest) {
           error: err.message,
         });
       }
+
+      // Add a random delay between 2 to 5 seconds to mimic human behavior
+      const jitter = Math.floor(Math.random() * 3000) + 2000;
+      await delay(jitter);
     }
 
     return NextResponse.json({

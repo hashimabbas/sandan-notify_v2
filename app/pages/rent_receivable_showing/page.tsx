@@ -77,7 +77,7 @@ export default function Home() {
     if (queue.length > 0 && !isSending) {
       intervalId = setInterval(() => {
         sendBatch();
-      }, 2000); // Process batch every 2 seconds
+      }, 10000); // Process batch every 10 seconds
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -400,7 +400,6 @@ export default function Home() {
           {/* Confirmation Dialog */}
           {showDialog && (
             <ConfirmationDialog
-              isOpen={showDialog}
               onClose={handleCloseDialog} // Updated to handleCloseDialog
               onConfirm={confirmDelete}
               title="Confirm Deletion"

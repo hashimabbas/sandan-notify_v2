@@ -9,6 +9,8 @@ const CHATBERRY_TOKEN = process.env.CHATBERRY_TOKEN!;
 const CHATBERRY_TEMPLATE_ENDPOINT =
   "https://dashboard.chatberry.net/api/send/template";
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function POST(req: NextRequest) {
   const client = await clientPromise;
   const db = client.db("notify_app");
@@ -131,6 +133,10 @@ export async function POST(req: NextRequest) {
           error: err.message,
         });
       }
+
+      // Add a random delay between 2 to 5 seconds to mimic human behavior
+      const jitter = Math.floor(Math.random() * 3000) + 2000;
+      await delay(jitter);
     }
 
     return NextResponse.json({
