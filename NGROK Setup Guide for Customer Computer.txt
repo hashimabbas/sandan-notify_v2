@@ -1,0 +1,25 @@
+To ensure the automated system works correctly on the customer's machine, follow these steps to set up NGROK:
+
+1. Install NGROK
+Go to ngrok.com/download and download the Windows version.
+Extract the ngrok.exe file.
+Recommended: Move ngrok.exe to C:\Windows\ or add its folder to the System Environment Variables (PATH) so the batch script can find it from any folder.
+2. Authenticate (Crucial)
+Static domains require an authenticated account.
+
+Log in to the NGROK Dashboard.
+Copy the Your Authtoken.
+Open a Command Prompt (cmd) and run:
+cmd
+ngrok config add-authtoken YOUR_AUTHTOKEN_HERE
+3. Verify the Domain
+In the NGROK Dashboard, ensure the domain balsamiferous-gamogenetic-marilynn.ngrok-free.dev is listed under Cloud Edge > Domains.
+If this is a different customer account, they must "Claim" that domain or you must update the .env and start_app.bat with their specific domain.
+4. Final Test
+Run the start_app.bat file.
+It should open two windows: one for the Next.js app and one for the NGROK tunnel.
+Check the NGROK window to see if the "Session Status" is online and the "Forwarding" URL is correct.
+5. Startup Automation
+Copy the start_app.bat file.
+Press Win + R, type shell:startup, and press Enter.
+Paste the file there.

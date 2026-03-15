@@ -18,7 +18,7 @@ const TEMPLATE_NAME = "tenant_rent_invoice";
 const TEMPLATE_LANGUAGE_CODE = "en"; 
 
 // NGROK / FILE SERVER CONFIGURATION (UPDATE WITH YOUR LIVE NGROK URL)
-const NGROK_PUBLIC_URL = "https://balsamiferous-gamogenetic-marilynn.ngrok-free.dev"; 
+const NGROK_PUBLIC_URL = process.env.NGROK_PUBLIC_URL || "https://balsamiferous-gamogenetic-marilynn.ngrok-free.dev"; 
 const TEMP_DIR = path.join(process.cwd(), 'temp_invoices');
 // -------------------------------------------------------------------------
 
@@ -84,7 +84,9 @@ export async function POST(req: NextRequest) {
         }
 
         const result = await response.json();
-        if (result.success === true) {
+        const isSuccess = result.success === true || (result.data && result.data.success === true) || result.statusCode === 200;
+
+        if (isSuccess) {
           // *** DELETE FROM RENT RECEIVABLES COLLECTION ***
           await db.collection("sheet_details_rent_receivables").deleteOne({ _id: new ObjectId(String(row._id)) }); 
           log.push({ contact: row.Contact, status: "Sent (Tenant Invoice)" });

@@ -9,8 +9,8 @@ start "Next.js App" cmd /k "npm run dev"
 
 timeout /t 5 /nobreak >nul
 
-echo Starting Ngrok...
-start "Ngrok Tunnel" cmd /k "ngrok http 8000"
+echo Starting Ngrok with Static Domain...
+start "Ngrok Tunnel" cmd /k "ngrok http --domain=balsamiferous-gamogenetic-marilynn.ngrok-free.dev 8000"
 
 echo Done! You can close this window, but keep the other two open.
 timeout /t 5

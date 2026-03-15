@@ -3,13 +3,18 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { PDFDocumentComponent } from "./pdfDocument";
 import clientPromise from "../../lib/mongodb";
 import { ObjectId } from "mongodb";
-import { put } from "@vercel/blob";
+import fs from "fs/promises";
+import path from "path";
 
-const CHATBERRY_TOKEN = process.env.CHATBERRY_TOKEN!;
+const CHATBERRY_TOKEN = process.env.CHATBERRY_TOKEN || "2CI4SBwLm6XfkbxgIHj0AFPvWS3TXJGfZN8kd46V";
 const CHATBERRY_TEMPLATE_ENDPOINT =
   "https://dashboard.chatberry.net/api/send/template";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// NGROK / FILE SERVER CONFIGURATION
+const NGROK_PUBLIC_URL = process.env.NGROK_PUBLIC_URL || "https://balsamiferous-gamogenetic-marilynn.ngrok-free.dev";
+const TEMP_DIR = path.join(process.cwd(), "temp_invoices");
 
 export async function POST(req: NextRequest) {
   const client = await clientPromise;
@@ -35,17 +40,14 @@ export async function POST(req: NextRequest) {
         );
 
         // ----------------------------
-        // 2️⃣ Upload PDF to Vercel Blob
+        // 2️⃣ Save PDF locally for NGROK download
         // ----------------------------
-        const blob = await put(
-          `rent-invoices/invoice_${row._id}.pdf`,
-          pdfBuffer,
-          {
-            access: "public",
-            contentType: "application/pdf",
-            allowOverwrite: true,
-          }
-        );
+        const fileName = `RentInvoice_${row._id}.pdf`;
+        const localFilePath = path.join(TEMP_DIR, fileName);
+        const publicFileUrl = `${NGROK_PUBLIC_URL}/api/download/${fileName}`;
+
+        await fs.mkdir(TEMP_DIR, { recursive: true });
+        await fs.writeFile(localFilePath, pdfBuffer as any);
 
         // ----------------------------
         // 3️⃣ Prepare payload for ChatBerry
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
                   {
                     type: "document",
                     document: {
-                      link: blob.url,
+                      link: publicFileUrl,
                       filename: `rent_invoice_${row.BUT_ID || "unit"}.pdf`,
                     },
                   },
@@ -104,8 +106,8 @@ export async function POST(req: NextRequest) {
 
         const result = await response.json();
 
-        // Inspect the response structure. Based on logs, it is nested: { statusCode: 200, data: { success: true, ... } }
-        const isSuccess = result.success === true || (result.data && result.data.success === true);
+        // Inspect the response structure. 
+        const isSuccess = result.success === true || (result.data && result.data.success === true) || result.statusCode === 200;
 
         if (isSuccess) {
           // Delete row from DB after successful send
@@ -117,7 +119,7 @@ export async function POST(req: NextRequest) {
             contact: row.Contact,
             status: "PDF-Success",
             messageId: result?.data?.data?.messages?.[0]?.id || "sent",
-            pdf: blob.url,
+            pdf: publicFileUrl,
           });
         } else {
           console.error("Chatberry API Error Response:", JSON.stringify(result, null, 2));
